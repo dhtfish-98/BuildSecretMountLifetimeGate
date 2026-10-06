@@ -14,6 +14,16 @@ from pathlib import Path
 MAX_FILE = 256 * 1024 * 1024
 MAX_EXPANDED = 512 * 1024 * 1024
 MAX_DEPTH = 5
+TAR_LAYER_TYPES = {
+    "application/vnd.oci.image.layer.v1.tar",
+    "application/vnd.oci.image.layer.nondistributable.v1.tar",
+    "application/vnd.docker.image.rootfs.diff.tar",
+}
+GZIP_TAR_LAYER_TYPES = {
+    "application/vnd.oci.image.layer.v1.tar+gzip",
+    "application/vnd.oci.image.layer.nondistributable.v1.tar+gzip",
+    "application/vnd.docker.image.rootfs.diff.tar.gzip",
+}
 
 
 class ScanIncomplete(Exception):
@@ -89,8 +99,25 @@ def _tar_payloads(data: bytes):
         position = next_header
 
 
+def _validate_declared_layer(data: bytes, media_type: object) -> None:
+    """Use the verified OCI descriptor, not a damaged payload's magic, to choose a parser."""
+    if not isinstance(media_type, str):
+        raise ScanIncomplete("local cache layer media type is missing or invalid")
+    if media_type in TAR_LAYER_TYPES:
+        tar_data = data
+    elif media_type in GZIP_TAR_LAYER_TYPES:
+        if not data.startswith(b"\x1f\x8b"):
+            raise ScanIncomplete("declared gzip TAR layer has no gzip header")
+        tar_data = _inflate_bounded(data, 16 + zlib.MAX_WBITS)
+    else:
+        raise ScanIncomplete("local cache layer media type is unsupported")
+    for _name, _payload in _tar_payloads(tar_data):
+        pass
+
+
 def _scan_bytes(
-    data: bytes, needle: bytes, area: str, location: str, depth: int = 0
+    data: bytes, needle: bytes, area: str, location: str, depth: int = 0,
+    expected_format: str | None = None,
 ) -> list[Finding]:
     if depth > MAX_DEPTH:
         raise ScanIncomplete("nested artifact depth exceeds bound")
@@ -99,6 +126,17 @@ def _scan_bytes(
     found: list[Finding] = []
     if needle in data:
         found.append(Finding(area, location, "literal"))
+
+    if expected_format == "tar+gzip":
+        if not data.startswith(b"\x1f\x8b"):
+            raise ScanIncomplete("declared gzip TAR file has no gzip header")
+        expanded = _inflate_bounded(data, 16 + zlib.MAX_WBITS)
+        found.extend(_scan_bytes(expanded, needle, area, location + "!gzip", depth + 1, "tar"))
+        return found
+    if expected_format == "tar":
+        for name, payload in _tar_payloads(data):
+            found.extend(_scan_bytes(payload, needle, area, location + "!" + name, depth + 1))
+        return found
 
     if data.startswith(b"\x1f\x8b"):
         expanded = _inflate_bounded(data, 16 + zlib.MAX_WBITS)
@@ -122,7 +160,12 @@ def scan_file(path: Path, needle: bytes, area: str) -> list[Finding]:
         raise ValueError("synthetic marker is too short for a meaningful scan")
     if path.stat().st_size > MAX_FILE:
         raise ScanIncomplete("artifact file exceeds bound")
-    return _scan_bytes(path.read_bytes(), needle, area, path.name)
+    expected_format = None
+    if path.name.endswith((".tar.gz", ".tgz")):
+        expected_format = "tar+gzip"
+    elif path.name.endswith(".tar"):
+        expected_format = "tar"
+    return _scan_bytes(path.read_bytes(), needle, area, path.name, expected_format=expected_format)
 
 
 def scan_path(path: Path, needle: bytes, area: str) -> list[Finding]:
@@ -253,7 +296,8 @@ def validate_local_cache(path: Path) -> dict[str, int]:
                 raise ScanIncomplete("local cache manifest layers missing")
             blob_target(manifest.get("config"))
             for layer in layers:
-                blob_target(layer)
+                layer_bytes = blob_target(layer).read_bytes()
+                _validate_declared_layer(layer_bytes, layer.get("mediaType"))
 
     for descriptor in manifests:
         visit(descriptor, 0)
@@ -317,11 +361,16 @@ def oci_history(archive_path: Path, needle: bytes) -> tuple[int, bool]:
             layers = obj.get("layers")
             if not isinstance(layers, list) or not layers:
                 raise ScanIncomplete("OCI image manifest layers missing")
+            config_type = config_descriptor.get("mediaType", "")
             for layer in layers:
                 if not isinstance(layer, dict):
                     raise ScanIncomplete("OCI image layer descriptor invalid")
-                descriptor_bytes(layer)
-            config_type = config_descriptor.get("mediaType", "")
+                raw_layer = descriptor_bytes(layer)
+                if config_type in (
+                    "application/vnd.oci.image.config.v1+json",
+                    "application/vnd.docker.container.image.v1+json",
+                ):
+                    _validate_declared_layer(raw_layer, layer.get("mediaType"))
             if config_type not in (
                 "application/vnd.oci.image.config.v1+json",
                 "application/vnd.docker.container.image.v1+json",

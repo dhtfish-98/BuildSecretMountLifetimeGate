@@ -46,7 +46,7 @@ def tar_files(files: dict[str, bytes]) -> bytes:
 def oci_tar(created_by: str) -> bytes:
     config = json.dumps({"history": [{"created_by": created_by}]}).encode()
     config_digest = hashlib.sha256(config).hexdigest()
-    layer = b"synthetic layer without a marker"
+    layer = tar_with("ordinary", b"synthetic layer without a marker")
     layer_digest = hashlib.sha256(layer).hexdigest()
     manifest = json.dumps({
         "schemaVersion": 2,
@@ -54,7 +54,10 @@ def oci_tar(created_by: str) -> bytes:
             "mediaType": "application/vnd.oci.image.config.v1+json",
             "digest": "sha256:" + config_digest,
         },
-        "layers": [{"digest": "sha256:" + layer_digest}],
+        "layers": [{
+            "mediaType": "application/vnd.oci.image.layer.v1.tar",
+            "digest": "sha256:" + layer_digest,
+        }],
     }).encode()
     manifest_digest = hashlib.sha256(manifest).hexdigest()
     index = json.dumps({"schemaVersion": 2, "manifests": [{"digest": "sha256:" + manifest_digest}]}).encode()
@@ -64,6 +67,31 @@ def oci_tar(created_by: str) -> bytes:
         "blobs/sha256/" + config_digest: config,
         "blobs/sha256/" + layer_digest: layer,
     })
+
+
+def cache_with_layer(root: Path, layer: bytes, media_type: str) -> None:
+    root.mkdir()
+    (root / "oci-layout").write_text('{"imageLayoutVersion":"1.0.0"}')
+    blobs = root / "blobs" / "sha256"
+    blobs.mkdir(parents=True)
+
+    def add_blob(payload: bytes) -> str:
+        digest = hashlib.sha256(payload).hexdigest()
+        (blobs / digest).write_bytes(payload)
+        return "sha256:" + digest
+
+    config_digest = add_blob(b'{"buildkit":"cache-config"}')
+    layer_digest = add_blob(layer)
+    manifest = json.dumps({
+        "schemaVersion": 2,
+        "config": {"mediaType": "application/vnd.buildkit.cacheconfig.v0", "digest": config_digest},
+        "layers": [{"mediaType": media_type, "digest": layer_digest}],
+    }).encode()
+    manifest_digest = add_blob(manifest)
+    (root / "index.json").write_text(json.dumps({
+        "schemaVersion": 2,
+        "manifests": [{"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": manifest_digest}],
+    }))
 
 
 class ScannerTests(unittest.TestCase):
@@ -116,6 +144,70 @@ class ScannerTests(unittest.TestCase):
             path.write_bytes(corrupt)
             with self.assertRaises(ScanIncomplete):
                 scan_file(path, MARKER, "oci_export")
+
+    def test_declared_tar_cache_rejects_damaged_magic_and_checksum(self):
+        layer = bytearray(tar_with("payload.zlib", zlib.compress(MARKER)))
+        layer[257] ^= 1
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bare_tar = root / "corrupt-magic.tar"
+            bare_tar.write_bytes(layer)
+            with self.assertRaises(ScanIncomplete):
+                scan_file(bare_tar, MARKER, "local_cache_export")
+            cache = root / "cache"
+            cache_with_layer(cache, bytes(layer), "application/vnd.oci.image.layer.v1.tar")
+            with self.assertRaises(ScanIncomplete):
+                validate_local_cache(cache)
+
+    def test_declared_oci_image_layer_rejects_damaged_tar(self):
+        layer = bytearray(tar_with("payload.zlib", zlib.compress(MARKER)))
+        layer[257] ^= 1
+        config = json.dumps({"history": [{"created_by": "clean"}]}).encode()
+        config_digest = hashlib.sha256(config).hexdigest()
+        layer_digest = hashlib.sha256(layer).hexdigest()
+        manifest = json.dumps({
+            "schemaVersion": 2,
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": "sha256:" + config_digest,
+            },
+            "layers": [{
+                "mediaType": "application/vnd.oci.image.layer.v1.tar",
+                "digest": "sha256:" + layer_digest,
+            }],
+        }).encode()
+        manifest_digest = hashlib.sha256(manifest).hexdigest()
+        index = json.dumps({"schemaVersion": 2, "manifests": [
+            {"digest": "sha256:" + manifest_digest}
+        ]}).encode()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "image.oci.tar"
+            path.write_bytes(tar_files({
+                "index.json": index,
+                "blobs/sha256/" + manifest_digest: manifest,
+                "blobs/sha256/" + config_digest: config,
+                "blobs/sha256/" + layer_digest: bytes(layer),
+            }))
+            with self.assertRaises(ScanIncomplete):
+                oci_history(path, MARKER)
+
+    def test_declared_cache_layer_requires_supported_media_and_matching_gzip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plain = tar_with("clean", b"clean")
+            valid = root / "valid"
+            cache_with_layer(valid, gzip.compress(plain), "application/vnd.oci.image.layer.v1.tar+gzip")
+            self.assertEqual(validate_local_cache(valid), {"manifest_count": 1, "blob_count": 3})
+
+            mislabeled = root / "mislabeled"
+            cache_with_layer(mislabeled, plain, "application/vnd.oci.image.layer.v1.tar+gzip")
+            with self.assertRaises(ScanIncomplete):
+                validate_local_cache(mislabeled)
+
+            unsupported = root / "unsupported"
+            cache_with_layer(unsupported, plain, "application/vnd.oci.image.layer.v1.tar+zstd")
+            with self.assertRaises(ScanIncomplete):
+                validate_local_cache(unsupported)
 
     def test_regular_file_and_directory_names_are_scanned(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -171,10 +263,10 @@ class ScannerTests(unittest.TestCase):
                 (blob_dir / digest).write_bytes(payload)
                 return "sha256:" + digest
             config_digest = add_blob(b'{"buildkit":"cache-config"}')
-            layer_digest = add_blob(b"cache-layer")
+            layer_digest = add_blob(tar_with("cache-entry", b"cache-layer"))
             manifest = json.dumps({"schemaVersion": 2,
                 "config": {"digest": config_digest},
-                "layers": [{"digest": layer_digest}]}).encode()
+                "layers": [{"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": layer_digest}]}).encode()
             manifest_digest = add_blob(manifest)
             (cache / "index.json").write_text(json.dumps({"schemaVersion": 2, "manifests": [{
                 "mediaType": "application/vnd.oci.image.manifest.v1+json",

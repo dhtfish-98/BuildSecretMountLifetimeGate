@@ -2,7 +2,7 @@
 
 **状态：v0.1.0 本地候选，真实 BuildKit A/B 与公开发行均 OPEN。** 维护者：dhtfish98。
 
-这个项目只运行两份自有 Dockerfile，用一次性随机**合成**字符串测试构建参数误用与 secret mount 的差别。弱侧把 `ARG` 值继续写入 `ENV`，要求在 OCI 镜像配置历史中实际观察到该值；强侧用 `RUN --mount=type=secret,required=true` 在当前指令内校验挂载内容，下一条 `RUN` 验证挂载路径已消失。每侧以 `--no-cache` 构建，并将 OCI 镜像、根文件系统、`mode=max` 本地缓存、构建元数据与构建日志逐字节扫描。扫描器还解开 tar 与 gzip 层，缺失或超限的输出会使验收失败。
+这个项目只运行两份自有 Dockerfile，用一次性随机**合成**字符串测试构建参数误用与 secret mount 的差别。弱侧把 `ARG` 值继续写入 `ENV`，要求在 OCI 镜像配置历史中实际观察到该值；强侧用 `RUN --mount=type=secret,required=true` 在当前指令内校验挂载内容，下一条 `RUN` 验证挂载路径已消失。每侧以 `--no-cache` 构建，并将 OCI 镜像、根文件系统、`mode=max` 本地缓存、构建元数据与构建日志逐字节扫描。OCI 镜像和缓存中的层按描述符 `mediaType` 强制解析 TAR 或 gzip TAR，损坏、未知或当前不支持的层格式均使验收失败；递归扫描也识别 zlib。缺失或超限的输出同样失败。
 
 该实验只适用于记录的 Docker/Buildx/BuildKit、固定 Alpine 基础镜像和 Dockerfile frontend、两份自有 Dockerfile、一次构建及其导出方式。secret 内容不参与 BuildKit 缓存键；故本实验不推断缓存复用行为。若某条构建指令故意复制、打印或派生 secret，挂载机制本身不会阻止泄漏。弱例为自造不安全基线，**不是** BuildKit 漏洞；本项目也不能证明任意镜像或生产秘密安全。
 
