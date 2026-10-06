@@ -274,6 +274,39 @@ class ScannerTests(unittest.TestCase):
             }]}))
             self.assertEqual(validate_local_cache(cache), {"manifest_count": 1, "blob_count": 3})
 
+    def test_metadata_known_fields_have_valid_types_and_values(self):
+        digest = "sha256:" + "a" * 64
+        descriptor = {"digest": digest, "mediaType": "application/vnd.oci.image.manifest.v1+json", "size": 0}
+        valid = [
+            {"buildx.build.ref": "builder/ref"},
+            {"containerimage.digest": digest},
+            {"containerimage.config.digest": digest},
+            {"containerimage.descriptor": descriptor},
+            {"buildx.build.ref": "builder/ref", "containerimage.digest": digest},
+        ]
+        invalid = [
+            {"buildx.build.ref": []},
+            {"buildx.build.ref": "  "},
+            {"containerimage.digest": 42},
+            {"containerimage.config.digest": "sha256:bad"},
+            {"containerimage.descriptor": {"digest": "garbage"}},
+            {"containerimage.descriptor": {**descriptor, "size": True}},
+            {"containerimage.descriptor": {**descriptor, "size": -1}},
+            {"containerimage.descriptor": {**descriptor, "mediaType": ""}},
+            {"buildx.build.ref": "builder/ref", "containerimage.digest": 42},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            metadata = Path(directory) / "metadata.json"
+            for payload in valid:
+                with self.subTest(valid=payload):
+                    metadata.write_text(json.dumps(payload))
+                    self.assertEqual(validate_metadata(metadata), sorted(payload))
+            for payload in invalid:
+                with self.subTest(invalid=payload):
+                    metadata.write_text(json.dumps(payload))
+                    with self.assertRaises(ScanIncomplete):
+                        validate_metadata(metadata)
+
     def test_readable_docker_and_buildkit_versions(self):
         raw = json.dumps({"Client": {"Version": "28.0.4"}, "Server": {
             "Version": "28.0.4", "ApiVersion": "1.48", "Os": "linux", "Arch": "amd64"

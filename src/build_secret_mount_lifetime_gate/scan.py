@@ -222,8 +222,24 @@ def validate_metadata(path: Path) -> list[str]:
         raise ScanIncomplete("Buildx metadata object is empty")
     recognized = {"containerimage.digest", "containerimage.config.digest", "containerimage.descriptor", "buildx.build.ref"}
     present = recognized.intersection(value)
-    if not present or all(value[key] in (None, "", {}) for key in present):
+    if not present:
         raise ScanIncomplete("Buildx metadata lacks recognized build fields")
+    for key in present:
+        field = value[key]
+        if key in {"containerimage.digest", "containerimage.config.digest"}:
+            _digest_hex(field)
+        elif key == "buildx.build.ref":
+            if not isinstance(field, str) or not field.strip():
+                raise ScanIncomplete("Buildx build reference invalid")
+        else:
+            if not isinstance(field, dict):
+                raise ScanIncomplete("Buildx image descriptor invalid")
+            _digest_hex(field.get("digest"))
+            if not isinstance(field.get("mediaType"), str) or not field["mediaType"].strip():
+                raise ScanIncomplete("Buildx image descriptor media type invalid")
+            size = field.get("size")
+            if type(size) is not int or size < 0:
+                raise ScanIncomplete("Buildx image descriptor size invalid")
     return sorted(present)
 
 
