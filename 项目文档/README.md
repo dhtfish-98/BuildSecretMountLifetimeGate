@@ -1,6 +1,6 @@
 # BuildSecretMountLifetimeGate
 
-**版本：0.1.0。** 维护者：dhtfish98。[验证状态与边界](VERSION_STATUS.md)按精确提交记录。
+**版本：0.1.1。** 维护者：dhtfish98。[验证状态与边界](VERSION_STATUS.md)按精确提交记录。
 
 这个项目只运行两份自有 Dockerfile，用一次性随机**合成**字符串测试构建参数误用与 secret mount 的差别。弱侧把 `ARG` 值继续写入 `ENV`，要求在 OCI 镜像配置历史中实际观察到该值；强侧用 `RUN --mount=type=secret,required=true` 在当前指令内校验挂载内容，下一条 `RUN` 验证挂载路径已消失。每侧以 `--no-cache` 构建，并将 OCI 镜像、根文件系统、`mode=max` 本地缓存、构建元数据与构建日志逐字节扫描。OCI 镜像和缓存中的层按描述符 `mediaType` 强制解析 TAR 或 gzip TAR，损坏、未知或当前不支持的层格式均使验收失败；递归扫描也识别 zlib。缺失或超限的输出同样失败。
 

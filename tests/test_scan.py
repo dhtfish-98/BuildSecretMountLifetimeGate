@@ -4,9 +4,12 @@ import io
 import json
 import tarfile
 import tempfile
+import tomllib
 import unittest
 import zlib
 from pathlib import Path
+
+from build_secret_mount_lifetime_gate import __version__
 
 from build_secret_mount_lifetime_gate.scan import (
     Finding,
@@ -95,6 +98,13 @@ def cache_with_layer(root: Path, layer: bytes, media_type: str) -> None:
 
 
 class ScannerTests(unittest.TestCase):
+    def test_public_version_fields_remain_aligned(self):
+        root = Path(__file__).resolve().parents[1]
+        version = (root / "VERSION").read_text().strip()
+        project = tomllib.loads((root / "pyproject.toml").read_text())
+        self.assertEqual(version, __version__)
+        self.assertEqual(version, project["project"]["version"])
+
     def test_nested_oci_layer_marker_is_found(self):
         layer = gzip.compress(tar_with("layer/evidence", MARKER))
         outer = tar_with("blobs/sha256/layer", layer)

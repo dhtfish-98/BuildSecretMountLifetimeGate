@@ -6,7 +6,7 @@
 4. 原始输出置于 `0700` 运行根并在本次运行结束后删除；只可发布不含合成值的回执。需要记录工作流运行、精确提交、可读的 Docker client/server、Buildx 与 BuildKit 版本、基础镜像/frontend 摘要、源 Dockerfile 摘要、元数据/缓存结构、结果及失败项目。未知格式或无法完整解析的导出须 FAIL。
 5. 单次合成实验不等于生产构建验证。真实授权场景、相关模型防护影响和 CVP 资格均须独立证明。
 
-当前本机只有 macOS arm64，未发现 Docker/Buildx/BuildKit 命令。上列第 2–4 项及公开发行仍 **OPEN**。
+本机 macOS arm64 没有 Docker/Buildx/BuildKit；真实构建对照须以每个版本对应的 Linux 托管运行、精确提交和回下载回执核对。[v0.1.0 的实际运行与发行](https://github.com/dhtfish-98/BuildSecretMountLifetimeGate/releases/tag/v0.1.0)已单独验收；后续版本需要自己的主线、标签和附件核验。
 
 当前跟踪工作流的 PR 路径只做不导入代码的语法解析；PR 仍可改动工作流且托管 runner 可能提供 Docker/sudo，不应称其为安全沙箱。可信 ref 的真实实验也依赖管理员实际配置分支与标签保护，保护规则仍 OPEN。
 
