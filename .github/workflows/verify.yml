@@ -54,7 +54,8 @@ jobs:
         run: |
           set -eu
           probe_root="$GITHUB_WORKSPACE/Build/public-diagnostic"
-          mkdir -p "$probe_root/weak"
+          install -d -m 700 "$probe_root" "$probe_root/weak"
+          export SYNTHETIC_SECRET=PUBLIC_DIAGNOSTIC_ONLY_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           docker buildx create --driver docker-container --name bsmg-public-diagnostic
           trap 'docker buildx rm bsmg-public-diagnostic >/dev/null 2>&1 || true; rm -rf "$probe_root"' EXIT
           docker buildx inspect bsmg-public-diagnostic --bootstrap
@@ -66,7 +67,7 @@ jobs:
             --output "type=local,dest=$probe_root/weak/filesystem" \
             --cache-to "type=local,dest=$probe_root/weak/cache,mode=max,compression=gzip" \
             --metadata-file "$probe_root/weak/metadata.json" \
-            --build-arg SYNTHETIC_SECRET=PUBLIC_DIAGNOSTIC_ONLY \
+            --build-arg SYNTHETIC_SECRET \
             "$GITHUB_WORKSPACE/src/build_secret_mount_lifetime_gate/fixtures"
       - name: Upload only sanitized receipt
         if: always()
