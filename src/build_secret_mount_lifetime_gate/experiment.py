@@ -61,7 +61,7 @@ def _docker_versions(raw: bytes) -> dict[str, str]:
 
 
 def _buildkit_version(inspect: str) -> str:
-    found = re.search(r"(?m)^\s*BuildKit:\s*(v?[0-9]+\.[0-9]+\.[0-9]+[^\s]*)\s*$", inspect)
+    found = re.search(r"(?m)^\s*BuildKit(?: version)?:\s*(v?[0-9]+\.[0-9]+\.[0-9]+[^\s]*)\s*$", inspect)
     if not found:
         raise ScanIncomplete("BuildKit version not found in builder inspection")
     return found.group(1)

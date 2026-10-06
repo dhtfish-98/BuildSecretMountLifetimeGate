@@ -313,6 +313,7 @@ class ScannerTests(unittest.TestCase):
         }}).encode()
         self.assertEqual(_docker_versions(raw)["server"], "28.0.4")
         self.assertEqual(_buildkit_version("Nodes:\n  BuildKit: v0.24.0\n"), "v0.24.0")
+        self.assertEqual(_buildkit_version("Nodes:\n  BuildKit version:      v0.33.1\n"), "v0.33.1")
 
     def test_oci_history_positive_control_and_clean_control(self):
         with tempfile.TemporaryDirectory() as directory:
