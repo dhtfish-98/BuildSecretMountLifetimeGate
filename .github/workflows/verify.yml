@@ -53,11 +53,12 @@ jobs:
         shell: bash
         run: |
           set -eu
-          probe_root="$GITHUB_WORKSPACE/Build/public-diagnostic"
-          install -d -m 700 "$probe_root" "$probe_root/weak"
+          probe_run="$GITHUB_WORKSPACE/Build/验证/BuildSecretMountLifetimeGate-public-diagnostic"
+          probe_root="$probe_run/raw"
+          install -d -m 700 "$probe_run" "$probe_root" "$probe_root/weak"
           export SYNTHETIC_SECRET=PUBLIC_DIAGNOSTIC_ONLY_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           docker buildx create --driver docker-container --name bsmg-public-diagnostic
-          trap 'docker buildx rm bsmg-public-diagnostic >/dev/null 2>&1 || true; rm -rf "$probe_root"' EXIT
+          trap 'docker buildx rm bsmg-public-diagnostic >/dev/null 2>&1 || true; rm -rf "$probe_run"' EXIT
           docker buildx inspect bsmg-public-diagnostic --bootstrap
           docker buildx build \
             --builder bsmg-public-diagnostic \
