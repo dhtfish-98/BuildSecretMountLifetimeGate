@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "build-secret-mount-lifetime-gate"
+version = "0.1.0"
+description = "Synthetic BuildKit build-secret lifetime and export-boundary experiment"
+requires-python = ">=3.11"
+authors = [{name = "dhtfish98"}]
+license = {text = "MIT"}
+
+[project.scripts]
+build-secret-mount-lifetime-gate = "build_secret_mount_lifetime_gate.experiment:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+build_secret_mount_lifetime_gate = ["fixtures/*.Dockerfile"]

@@ -1,0 +1,7 @@
+/Build/
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+*.whl
+*.tar.gz

@@ -1,0 +1,57 @@
+name: verify
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Parse checked-out Python without importing it
+        run: |
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          files = sorted(Path('src').rglob('*.py')) + sorted(Path('tests').rglob('*.py'))
+          if not files:
+              raise SystemExit('no Python files')
+          for path in files:
+              ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+          print(f'parsed {len(files)} Python files')
+          PY
+
+  buildkit-boundary:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Confirm build environment
+        run: |
+          docker version
+          docker buildx version
+      - name: Unit tests on trusted ref
+        run: PYTHONPATH=src python3 -m unittest discover -s tests -v
+      - name: Execute synthetic BuildKit comparison
+        run: PYTHONPATH=src python3 -m build_secret_mount_lifetime_gate --build-root Build
+      - name: Upload only sanitized receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-secret-boundary-receipt
+          path: Build/验证/BuildSecretMountLifetimeGate-*/receipt.json
+          if-no-files-found: ignore
