@@ -177,7 +177,7 @@ def execute(build_root: Path) -> tuple[Path, dict[str, object]]:
     receipt: dict[str, object] = {
         "schema": 1,
         "project": PROJECT,
-        "version": "0.1.0-candidate",
+        "version": "0.1.0",
         "status": "FAIL",
         "run_id": run_id,
         "synthetic_marker_sha256": marker_sha256,
