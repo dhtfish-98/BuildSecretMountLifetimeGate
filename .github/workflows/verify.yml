@@ -48,28 +48,6 @@ jobs:
         run: PYTHONPATH=src python3 -m unittest discover -s tests -v
       - name: Execute synthetic BuildKit comparison
         run: PYTHONPATH=src python3 -m build_secret_mount_lifetime_gate --build-root Build
-      - name: Diagnose failed Buildx export with a public constant
-        if: ${{ failure() }}
-        shell: bash
-        run: |
-          set -eu
-          probe_run="$GITHUB_WORKSPACE/Build/验证/BuildSecretMountLifetimeGate-public-diagnostic"
-          probe_root="$probe_run/raw"
-          install -d -m 700 "$probe_run" "$probe_root" "$probe_root/weak"
-          export SYNTHETIC_SECRET=PUBLIC_DIAGNOSTIC_ONLY_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          docker buildx create --driver docker-container --name bsmg-public-diagnostic
-          trap 'docker buildx rm bsmg-public-diagnostic >/dev/null 2>&1 || true; rm -rf "$probe_run"' EXIT
-          docker buildx inspect bsmg-public-diagnostic --bootstrap
-          docker buildx build \
-            --builder bsmg-public-diagnostic \
-            --no-cache --progress=plain --platform linux/amd64 \
-            --file "$GITHUB_WORKSPACE/src/build_secret_mount_lifetime_gate/fixtures/weak.Dockerfile" \
-            --output "type=oci,dest=$probe_root/weak/image.oci.tar,compression=gzip" \
-            --output "type=local,dest=$probe_root/weak/filesystem" \
-            --cache-to "type=local,dest=$probe_root/weak/cache,mode=max,compression=gzip" \
-            --metadata-file "$probe_root/weak/metadata.json" \
-            --build-arg SYNTHETIC_SECRET \
-            "$GITHUB_WORKSPACE/src/build_secret_mount_lifetime_gate/fixtures"
       - name: Upload only sanitized receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
