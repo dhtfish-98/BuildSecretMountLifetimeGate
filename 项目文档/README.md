@@ -13,7 +13,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 PYTHONPATH=src python3 -m build_secret_mount_lifetime_gate --build-root Build
 ```
 
-程序在权限 `0700` 的独立运行目录中处理原始导出，只把不含合成值的回执留在 `Build/验证/BuildSecretMountLifetimeGate-<run-id>/receipt.json`；执行完成即删除合成值文件、弱/强原始镜像、文件导出、缓存及元数据。不得上传弱镜像、合成值或原始构建日志，失败时仅记日志 SHA-256 和固定错误原因。当前 GitHub 工作流对 PR 的默认步骤只解析 Python 语法、不导入提交的代码；可信 `main`/`v*` 推送或手动选中这些 ref 才按当前工作流运行单元测试和真实构建。**PR 可修改工作流本身，且托管 runner 可能有 Docker/sudo；这不是 PR 低权限沙箱。** 仓库远端保护规则仍需另行核查。
+程序在权限 `0700` 的 `Build/BuildSecretMountLifetimeGate-raw/<run-id>/` 纯 ASCII 临时目录中处理原始导出，只把不含合成值的回执留在 `Build/验证/BuildSecretMountLifetimeGate-<run-id>/receipt.json`；执行完成即删除合成值文件、弱/强原始镜像、文件导出、缓存及元数据。不得上传弱镜像、合成值或原始构建日志，失败时仅记日志 SHA-256 和固定错误原因。当前 GitHub 工作流对 PR 的默认步骤只解析 Python 语法、不导入提交的代码；可信 `main`/`v*` 推送或手动选中这些 ref 才按当前工作流运行单元测试和真实构建。**PR 可修改工作流本身，且托管 runner 可能有 Docker/sudo；这不是 PR 低权限沙箱。** 仓库远端保护规则仍需另行核查。
 
 共享工作区源码位于 `项目源码/当前项目/research-cvp30-c-20261005/BuildSecretMountLifetimeGate`，文档位于同组 `项目文档`。单独候选仓把这些源码放在仓根的 `src/`、`tests/` 等原有路径，文档放在 `项目文档/`；运行输出只在该仓根 `Build/`。发行镜像/缓存均不是仓库源码。
 

@@ -157,8 +157,13 @@ def execute(build_root: Path) -> tuple[Path, dict[str, object]]:
         raise BuildFailure("Docker is unavailable; real BuildKit experiment remains OPEN")
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
     run_root = build_root / "验证" / f"{PROJECT}-{run_id}"
-    raw_root = run_root / "raw"
+    raw_parent = build_root / f"{PROJECT}-raw"
+    raw_root = raw_parent / f"{PROJECT}-{run_id}"
     run_root.parent.mkdir(parents=True, exist_ok=True)
+    if raw_parent.is_symlink():
+        raise BuildFailure("private raw output parent is a symlink")
+    raw_parent.mkdir(mode=0o700, exist_ok=True)
+    raw_parent.chmod(0o700)
     run_root.mkdir(mode=0o700, exist_ok=False)
     raw_root.mkdir(mode=0o700, exist_ok=False)
     run_root.chmod(0o700)
